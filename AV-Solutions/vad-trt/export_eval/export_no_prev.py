@@ -31,19 +31,12 @@ import torch
 torch.multiprocessing.set_sharing_strategy('file_system')
 import warnings
 from mmcv import Config, DictAction
-from mmcv.cnn import fuse_conv_bn
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
-from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
-                         wrap_fp16_model)
-
-from mmdet3d.apis import single_gpu_test
-from mmdet3d.datasets import build_dataset
-from projects.mmdet3d_plugin.datasets.builder import build_dataloader
-from mmdet3d.models import build_model
-from mmdet.apis import set_random_seed
-# from projects.mmdet3d_plugin.bevformer.apis.test import custom_multi_gpu_test
-from projects.mmdet3d_plugin.VAD.apis.test import custom_multi_gpu_test
-from mmdet.datasets import replace_ImageToTensor
+from mmcv.models import build_model, fuse_conv_bn
+from torch.nn.parallel import DataParallel, DistributedDataParallel
+from mmcv.utils import (get_dist_info, init_dist, load_checkpoint,
+                         wrap_fp16_model, set_random_seed)
+from mmcv.mmdet3d_plugin.bevformer.apis.test import custom_multi_gpu_test, single_gpu_test
+from mmcv.datasets import (build_dataset, build_dataloader, replace_ImageToTensor)
 import time
 import os.path as osp
 import json
@@ -259,7 +252,7 @@ def main():
         ch = HookHelper()
         ch.attach_hook(model, "vadv1")
 
-        model = MMDataParallel(model, device_ids=[0])
+        model = DataParallel(model, device_ids=[0])
         # outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)        
 
         with torch.no_grad():
@@ -331,7 +324,7 @@ def main():
                     pass
                     # _ = model(return_loss=False, rescale=True, **data)
     else:           
-        model = MMDistributedDataParallel(
+        model = DistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False)
