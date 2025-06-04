@@ -1,99 +1,109 @@
 # SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# ... (许可信息) ...
 
 cmake_minimum_required(VERSION 3.16)
 project(bev_deploy LANGUAGES C CXX CUDA)
 
-option(TARGET "x86_64")
+find_package(CUDA 11.8 REQUIRED)
+if(NOT CUDA_FOUND)
+    message(FATAL_ERROR "CMake: CUDA Toolkit 11.8 not found, but is REQUIRED.")
+endif()
+message(STATUS "CMake: Found CUDA Version: ${CUDA_VERSION}")
+message(STATUS "CMake: CUDA_INCLUDE_DIRS detected by find_package(CUDA): [${CUDA_INCLUDE_DIRS}]")
+
+set(TARGET "x86_64") # 强制 TARGET 为 "x86_64"
+message(STATUS "CMake: TARGET has been forcibly set to: [${TARGET}]")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_C_FLAGS "-fPIC -O0 -g")
-set(CMAKE_CXX_FLAGS "-fPIC -O0 -g")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}")
+set(CMAKE_CXX_FLAGS "-fPIC -O0 -g") # 保持你原有的 CXX 标志
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS}") # 通常为空，由 NVCC FLAGS 控制
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -std=c++14 --expt-relaxed-constexpr --compiler-options -fPIC -O2 -Xptxas=-v")
 
-if(${TARGET} MATCHES "aarch64")
+# --- 关键修改：直接将 CUDA include 路径添加到 CMAKE_CXX_FLAGS ---
+set(FORCED_CUDA_INCLUDE_FOR_CXX "/home/binwang/miniforge3/envs/vad/include")
+if(EXISTS "${FORCED_CUDA_INCLUDE_FOR_CXX}/cuda_runtime_api.h")
+    message(STATUS "CMake: Forcing CUDA include for C++: -I${FORCED_CUDA_INCLUDE_FOR_CXX}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -I${FORCED_CUDA_INCLUDE_FOR_CXX}")
+else()
+    message(WARNING "CMake: Path to force C++ CUDA include [${FORCED_CUDA_INCLUDE_FOR_CXX}] or cuda_runtime_api.h within it not found. CMAKE_CXX_FLAGS not modified with this path.")
+endif()
+# --- 修改结束 ---
+
+if(${TARGET} STREQUAL "aarch64")
+    message(STATUS "CMake: Configuring for aarch64 target.")
     set(CMAKE_C_COMPILER   /usr/bin/aarch64-linux-gnu-gcc)
     set(CMAKE_CXX_COMPILER /usr/bin/aarch64-linux-gnu-g++)
-    set(CMAKE_FIND_ROOT_PATH "/usr/aarch64-linux-gnu")
-    set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-
-    set(CUDA_TOOLKIT_ROOT_DIR     /usr/local/cuda-11.4/)
-    set(CUDA_TOOLKIT_TARGET_NAME  "aarch64-linux")
-    set(CUDA_TOOLKIT_INCLUDE      /usr/local/cuda-11.4/targets/aarch64-linux/include)
-    set(CUDA_CUDART_LIBRARY       /usr/local/cuda-11.4/targets/aarch64-linux/lib/libcudart.so)    
-    set(CUDA_HOST_COMPILER  "/usr/bin/aarch64-linux-gnu-g++" CACHE STRING "host compiler" FORCE)
-
-    set(TENSORRT_INCLUDE_DIRS /usr/include/aarch64-linux-gnu)
-    set(TENSORRT_LIBRARY_DIRS /usr/lib/aarch64-linux-gnu)
-
     set(ARCH 87)
-
-    include_directories(
-        ${CUDA_INCLUDE_DIRS} 
-        ${CUDA_TOOLKIT_INCLUDE}
-        ${TENSORRT_INCLUDE_DIRS})
-    link_directories(
-        /drive/drive-linux/lib-target
-        /usr/local/cuda-11.4/targets/aarch64-linux/lib/
-        /usr/local/cuda-11.4/targets/aarch64-linux/lib/stubs/
-        ${TENSORRT_LIBRARY_DIRS})
-    set(DEPS ${DEPS} nvcudla cudla cuda cudart)
-    find_package(CUDA REQUIRED)
-elseif(${TARGET} MATCHES "x86_64")
-    option(TRT_ROOT "$ENV{TRT_ROOT}")
-    # linux x86
-    find_package(CUDA REQUIRED)
-    
+    set(TENSORRT_INCLUDE_DIRS /usr/include/aarch64-linux-gnu) # aarch64 的 TRT include
+    # 保持你原有的 aarch64 include_directories 方式
+    include_directories(${TENSORRT_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS}) 
+elseif(${TARGET} STREQUAL "x86_64")
+    message(STATUS "CMake: Configuring for x86_64 target.")
+    if(DEFINED ENV{TRT_ROOT})
+        set(TRT_ROOT_PATH "$ENV{TRT_ROOT}")
+    else()
+        message(FATAL_ERROR "TRT_ROOT environment variable is not set for x86_64 target.")
+    endif()
+    message(STATUS "CMake: Using TRT_ROOT_PATH: [${TRT_ROOT_PATH}]")
     set(ARCH 86)
-    message(STATUS ${TRT_ROOT})
-    set(TENSORRT_INCLUDE_DIRS ${TRT_ROOT}/include/)
-    set(TENSORRT_LIBRARY_DIRS ${TRT_ROOT}/lib/)
-    
-    set(DEPS ${DEPS} cuda)
-    include_directories(
-        ${CUDA_INCLUDE_DIRS} 
-        ${TENSORRT_INCLUDE_DIRS})
-    link_directories(
-        ${TENSORRT_LIBRARY_DIRS})
+    message(STATUS "CMake: ARCH set to [${ARCH}] for x86_64.")
+    set(TENSORRT_INCLUDE_DIRS ${TRT_ROOT_PATH}/include/) # x86_64 的 TRT include
+    set(TENSORRT_LIBRARY_DIRS ${TRT_ROOT_PATH}/lib/)
+    set(DEPS "")
+    link_directories(${TENSORRT_LIBRARY_DIRS}) # 保持你原有的 link_directories
 else()
+    message(WARNING "CMake: TARGET is '[${TARGET}]', which is not 'x86_64' or 'aarch64'. ARCH will not be set appropriately!")
+    set(ARCH "INVALID_TARGET_SPECIFIED") 
 endif()
 
-# uncomment macro DEBUG for more verbose logging information inside plugins
-# add_definitions(-DDEBUG)
+message(STATUS "CMake: Final ARCH value before setting target properties: [${ARCH}]")
 
-# uncomment below macro to enable debug output in cub
-# add_definitions(-DCUB_LOG -DCUB_DETAIL_DEBUG_ENABLE_LOG)
+# 全局的 include 目录 (来自你原始文件结构)
+include_directories(
+    ${CMAKE_SOURCE_DIR}/include 
+    ${CMAKE_SOURCE_DIR}/kernel 
+)
 
-include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/kernel ${OpenCV_INCLUDE_DIRS})
+set(plugins_cu_srcs 
+    ${CMAKE_CURRENT_SOURCE_DIR}/multi_scale_deform_attn/ms_deform_attn_kernel.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/rotate/rotateKernel.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/select_and_pad/select_and_pad_kernel.cu
+)
 
-set(plugins_cu_srcs ${CMAKE_CURRENT_SOURCE_DIR}/multi_scale_deform_attn/ms_deform_attn_kernel.cu
-                    ${CMAKE_CURRENT_SOURCE_DIR}/rotate/rotateKernel.cu
-                    ${CMAKE_CURRENT_SOURCE_DIR}/select_and_pad/select_and_pad_kernel.cu)
+add_library(plugins_cu STATIC ${plugins_cu_srcs})
 
-cuda_add_library(plugins_cu ${plugins_cu_srcs} OPTIONS -arch=sm_${ARCH})
-
-set_target_properties(plugins_cu PROPERTIES CUDA_ARCHITECTURES $ARCH)
+# plugins_cu 的包含目录 (来自你原始文件结构)
+target_include_directories(plugins_cu PRIVATE
+    ${TENSORRT_INCLUDE_DIRS} 
+    ${CMAKE_SOURCE_DIR}/include 
+    ${CMAKE_SOURCE_DIR}/kernel
+)
+set_target_properties(plugins_cu PROPERTIES CUDA_ARCHITECTURES "${ARCH}")
 set_target_properties(plugins_cu PROPERTIES CUDA_STANDARD 14)
-set_target_properties(plugins_cu PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(plugins_cu PROPERTIES POSITION_INDEPENDENT_CODE ON) # 保持 PIC 设置
 
-add_library(plugins SHARED ${CMAKE_CURRENT_SOURCE_DIR}/multi_scale_deform_attn/ms_deform_attn.cpp
-                           ${CMAKE_CURRENT_SOURCE_DIR}/rotate/rotate_plugin.cpp
-                           ${CMAKE_CURRENT_SOURCE_DIR}/select_and_pad/select_and_pad.cpp)
+add_library(plugins SHARED 
+    ${CMAKE_CURRENT_SOURCE_DIR}/multi_scale_deform_attn/ms_deform_attn.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/rotate/rotate_plugin.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/select_and_pad/select_and_pad.cpp
+)
 
-target_link_libraries(plugins plugins_cu nvinfer ${CUDA_LIBRARIES} ${DEPS} cublas)
+# plugins 的包含目录
+# 由于我们已经通过 CMAKE_CXX_FLAGS 强制添加了 CUDA include 路径,
+# 这里不再需要为 CUDA 路径单独添加条目。
+target_include_directories(plugins PRIVATE
+    ${TENSORRT_INCLUDE_DIRS}
+    # CUDA include 路径现在应通过 CMAKE_CXX_FLAGS 提供
+    ${CMAKE_SOURCE_DIR}/include # 项目自身的 include
+    ${CMAKE_SOURCE_DIR}/kernel  # 项目自身的 kernel
+)
+
+target_link_libraries(plugins PRIVATE 
+    plugins_cu 
+    nvinfer    
+    ${DEPS}    
+    ${CUDA_LIBRARIES}
+    ${CUDA_CUBLAS_LIBRARIES} # 或直接 cublas，如果这个变量未定义
+)

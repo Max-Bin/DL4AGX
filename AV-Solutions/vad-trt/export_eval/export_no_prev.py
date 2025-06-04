@@ -263,8 +263,8 @@ def main():
                     Hook.cache._capture["vadv1.pts_bbox_head.forward"] = []
                     
                     with Hook.capture() as _:
-                        result = model(return_loss=False, rescale=True, **data)
-
+                        #result = model(return_loss=False, rescale=True, **data)
+                        result = model(data, return_loss=False, rescale=True)
                     def pth_mapping(src):
                         return src.replace("/ws_oss", "/home/yuchaoj/ws_oss")
                     

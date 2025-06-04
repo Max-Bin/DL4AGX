@@ -252,7 +252,7 @@ def main():
         ch = HookHelper()
         ch.attach_hook(model, "vadv1_prev")
 
-        model = MMDataParallel(model, device_ids=[0])
+        model = DataParallel(model, device_ids=[0])
         # outputs = single_gpu_test(model, data_loader, args.show, args.show_dir)        
 
         class CustomAutoInspectHelper(AutoInspectHelper):
@@ -286,7 +286,8 @@ def main():
                     Hook.cache._capture["vadv1_prev.pts_bbox_head.forward"] = []
 
                     with Hook.capture() as _:
-                        result = model(return_loss=False, rescale=True, **data)
+                        #result = model(return_loss=False, rescale=True, **data)
+                        result = model(data, return_loss=False, rescale=True)
 
                     ch.hooks["vadv1_prev.pts_bbox_head.transformer.encoder.layers.0.attentions.1.forward"]._patch(patch_spatial_cross_attn_forward)
                     ch.hooks["vadv1_prev.pts_bbox_head.transformer.encoder.layers.1.attentions.1.forward"]._patch(patch_spatial_cross_attn_forward)
@@ -296,7 +297,7 @@ def main():
 
                     from patch.patch_rotate import rotate
 
-                    mod = sys.modules["projects.mmdet3d_plugin.VAD.VAD_transformer"]
+                    mod = sys.modules["torchvision.transforms.functional"]
                     ch.hooks["vadv1_prev.func.rotate"] = Hook(mod, "rotate", "vadv1_prev.func")._patch(rotate)
                     Hook.cache._capture["vadv1_prev.func.rotate"] = []
                     
@@ -317,9 +318,10 @@ def main():
                     ah = CustomAutoInspectHelper(ch.hooks["vadv1_prev.pts_bbox_head.forward"], [fn_fwd]); ah.export()
                     exit(0)
                 else:
-                    _ = model(return_loss=False, rescale=True, **data)
+                    # _ = model(return_loss=False, rescale=True, **data)
+                    _ = model(data, return_loss=False, rescale=True)
     else:           
-        model = MMDistributedDataParallel(
+        model = DistributedDataParallel(
             model.cuda(),
             device_ids=[torch.cuda.current_device()],
             broadcast_buffers=False)

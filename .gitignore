@@ -6,3 +6,4 @@ experiments/
 AV-Solutions/common/dependencies/cuOSD/*
 # Ignore macOS system files
 .DS_Store
+data

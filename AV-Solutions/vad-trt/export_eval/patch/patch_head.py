@@ -201,8 +201,7 @@ def patch_VADHead_select_and_pad_pred_map(
     return selected_map_query, selected_map_pos, selected_padding_mask
 
 # patch_VADHead_select_and_pad_pred_map.max_pnum = 16
-# from torchvision.transforms.functional import rotate
-from projects.mmdet3d_plugin.VAD.VAD_transformer import rotate
+from torchvision.transforms.functional import rotate
 
 def patch_VADPerceptionTransformer_get_bev_features(
     self,
@@ -298,8 +297,8 @@ def patch_VADPerceptionTransformer_get_bev_features(
     )
     return bev_embed
 
-from mmdet.models.utils.transformer import inverse_sigmoid
-
+# from mmdet.models.utils.transformer import inverse_sigmoid
+from mmcv.models.utils.transformer import inverse_sigmoid
 def patch_VADHead_forward(self,
     mlvl_feats,
     img_metas,

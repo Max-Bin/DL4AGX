@@ -55,11 +55,13 @@ As `VAD` is a temporal model, the inference behavior is different between the fi
 When one frame has its previous frame, it will first do a temporal warp then concat the warped feature map to the current one.
 To deploy the ONNX of the first frame, you may run
 ```bash
-python export_no_prev.py /workspace/VAD/projects/configs/VAD/VAD_tiny_stage_2.py /workspace/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
+# python export_no_prev.py /workspace/VAD/projects/configs/VAD/VAD_tiny_stage_2.py /workspace/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
+python export_no_prev.py /mnt/sda1/VAD/configs/VAD/VAD_tiny_stage_2.py /mnt/sda1/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
 ```
 To deploy the ONNX of the subsequent frames, you may run
 ```bash
-python export_prev.py /workspace/VAD/projects/configs/VAD/VAD_tiny_stage_2.py /workspace/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
+# python export_prev.py /workspace/VAD/projects/configs/VAD/VAD_tiny_stage_2.py /workspace/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
+python export_prev.py /mnt/sda1/VAD/configs/VAD/VAD_tiny_stage_2.py /mnt/sda1/VAD/ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
 ```
 After these two command lines, you are expected to see `vadv1.extract_img_feat`, `vadv1.pts_bbox_head.forward`, `vadv1_prev.pts_bbox_head.forward` under `/workspace/DL4AGX/AV-Solutions/vad-trt/export_eval/scratch`. Each folder contains dumped input and output tensors in binary format, and an ONNX file begin with `sim_`.
 
@@ -68,7 +70,10 @@ We provide `test_tensorrt.py` to run benchmark with TensorRT. It will produce si
 
 1. To prepare dependencies for benchmark:
 ```bash
-pip install pycuda numpy==1.23
+pip uninstall numpy
+mamba uninstall numpy
+pip install pycuda numpy==1.23 onnx protobuf onnx_graphsurgeon
+
 pip install <TensorRT Root>/python/tensorrt-<version>-cp38-none-linux_aarch64.whl
 ```
 2. Build plugins for benchmark
@@ -85,36 +90,33 @@ make
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<TRT_ROOT>/lib
 export PATH=$PATH:<TRT_ROOT>/bin
 
-mkdir /workspace/DL4AGX/AV-Solutions/vad-trt/export_eval/vadv1.extract_img_feat
-mkdir /workspace/DL4AGX/AV-Solutions/vad-trt/export_eval/vadv1.pts_bbox_head.forward
-mkdir /workspace/DL4AGX/AV-Solutions/vad-trt/export_eval/vadv1_prev.pts_bbox_head.forward
-
 # build image encoder
 trtexec --onnx=scratch/vadv1.extract_img_feat/sim_vadv1.extract_img_feat.onnx \
         --staticPlugins=../plugins/build/libplugins.so \
         --profilingVerbosity=detailed --dumpProfile \
         --separateProfileRun --useSpinWait --useManagedMemory \
         --fp16 \
-        --saveEngine=vadv1.extract_img_feat/vadv1.extract_img_feat.fp16.engine
+        --saveEngine=scratch/vadv1.extract_img_feat/vadv1.extract_img_feat.fp16.engine
 
 # build heads
 trtexec --onnx=scratch/vadv1.pts_bbox_head.forward/sim_vadv1.pts_bbox_head.forward.onnx \
         --staticPlugins=../plugins/build/libplugins.so \
         --profilingVerbosity=detailed --dumpProfile \
         --separateProfileRun --useSpinWait --useManagedMemory \
-        --saveEngine=vadv1.pts_bbox_head.forward/vadv1.pts_bbox_head.forward.engine
+        --saveEngine=scratch/vadv1.pts_bbox_head.forward/vadv1.pts_bbox_head.forward.engine
 
 # build heads with prev_bev
 trtexec --onnx=scratch/vadv1_prev.pts_bbox_head.forward/sim_vadv1_prev.pts_bbox_head.forward.onnx \
         --staticPlugins=../plugins/build/libplugins.so \
         --profilingVerbosity=detailed --dumpProfile \
         --separateProfileRun --useSpinWait --useManagedMemory \
-        --saveEngine=vadv1_prev.pts_bbox_head.forward/vadv1_prev.pts_bbox_head.forward.engine
+        --saveEngine=scratch/vadv1_prev.pts_bbox_head.forward/vadv1_prev.pts_bbox_head.forward.engine
 ```
 
 4. Run benchmark with tensorrt
 ```bash
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:<TensorRT Root>/lib
+export LD_LIBRARY_PATH=/mnt/sda1/DL4AGX/AV-Solutions/vad-trt/plugins/build:$LD_LIBRARY_PATH 
 python test_tensorrt.py /workspace/VAD/projects/configs/VAD/VAD_tiny_stage_2.py ckpts/VAD_tiny.pth --launcher none --eval bbox --tmpdir tmp
 ```
 As we replace the backend from pytorch to tensorrt while keeping other parts like data loading and evaluation unchanged, you are expected to see outputs similar to the pytorch benchmark.
